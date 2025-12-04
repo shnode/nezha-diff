@@ -1,0 +1,48 @@
+# ====== builder 阶段：在容器里编译 ======
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /src
+COPY . .
+
+# 编译需要的工具链
+RUN apk add --no-cache build-base git
+
+# 可以按需要改架构：amd64 / arm64
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+# 安装 swag
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
+# 进入 dashboard 目录生成 swagger docs
+RUN cd cmd/dashboard && \
+    swag init --pd -d . -g main.go -o ./docs --parseGoList=false
+
+# 再编译 dashboard
+RUN cd cmd/dashboard && \
+    go build -trimpath -o /output/dashboard
+
+# 编译 dashboard
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -tags go_json -trimpath \
+    -o /output/dashboard ./cmd/dashboard
+
+# ====== runtime 阶段：跑起来 ======
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /dashboard
+
+# 入口脚本，仓库里已经有
+COPY script/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# 把编译好的二进制放到 /dashboard/app（entrypoint 就是 exec /dashboard/app）
+COPY --from=builder /output/dashboard ./app
+
+VOLUME ["/dashboard/data"]
+EXPOSE 8008
+
+ENV TZ=Asia/Shanghai
+ENTRYPOINT ["/entrypoint.sh"]

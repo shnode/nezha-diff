@@ -1,0 +1,12 @@
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    image: nezha-dashboard:dev
+    container_name: nezha-dashboard
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    volumes:
+      - /opt/nezha/dashboard/data:/dashboard/data
